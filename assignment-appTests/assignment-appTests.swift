@@ -13,30 +13,38 @@ final class assignment_appTests: XCTestCase {
         return AppDataStore(session: makeMockedSession())
     }
 
-    func hiddenOnInit() async {
-        let store = AppDataStore()
+    override func tearDown() {
+        URLProtocolMock.handler = nil
+        super.tearDown()
+    }
 
-        if case .hidden = store.state {
-        } else {
-            XCTFail("Expected .hidden")
+    func test_hiddenOnInit() {
+        let store = AppDataStore()
+        switch store.state {
+        case .hidden: break
+        default: XCTFail("Expected .hidden")
         }
     }
 
-    func revealFunction() async {
-        let store = await MainActor.run { AppDataStore() }
+    func test_revealFunction() {
+        let store = AppDataStore()
         store.completeScratch(with: "CODE-123")
         guard case .revealed(let code) = store.state else {
             return XCTFail("Expected .revealed")
         }
-        XCTAssertEqual(code, "ABC")
+        XCTAssertEqual(code, "CODE-123")
     }
 
-    func activationFunction() async {
+    func test_activation_success() async {
         let json = #"{"ios":"6.24"}"#
         let store = makeStoreReturning(json: json)
         store.completeScratch(with: "CODE-123")
 
-        await store.activate()
+        do {
+            try await store.activate()
+        } catch {
+            return XCTFail("Unexpected error: \(error)")
+        }
 
         guard case .activated(let code) = store.state else {
             return XCTFail("Expected .activated")
@@ -45,12 +53,19 @@ final class assignment_appTests: XCTestCase {
         XCTAssertFalse(store.showActivationError)
     }
 
-    func activationWithFailFunction() async {
+    func test_activation_fails_with_unsupported_version() async {
         let json = #"{"ios":"6.0"}"#
         let store = makeStoreReturning(json: json)
-        store.completeScratch(with: "CODE-123")
+        store.completeScratch(with: "CODE-LOW")
 
-        await store.activate()
+        do {
+            try await store.activate()
+            return XCTFail("Expected ActivationError.unsupportedVersion, but no error was thrown")
+        } catch let error as ActivationError {
+            XCTAssertEqual(error, .unsupportedVersion)
+        } catch {
+            return XCTFail("Unexpected error: \(error)")
+        }
 
         guard case .revealed(let code) = store.state else {
             return XCTFail("Expected still .revealed")
@@ -59,16 +74,25 @@ final class assignment_appTests: XCTestCase {
         XCTAssertTrue(store.showActivationError)
     }
 
-    func activationWithNetworkErrorFunction() async {
+    func test_activation_fails_with_network_error() async {
         URLProtocolMock.handler = { _ in throw URLError(.timedOut) }
         let store = AppDataStore(session: makeMockedSession())
         store.completeScratch(with: "ERR")
 
-        await store.activate()
+        do {
+            try await store.activate()
+            return XCTFail("Expected network error, but no error was thrown")
+        } catch let error as ActivationError {
+            // rovnosť .network(_) porovnávame podľa tvojej Equatable implementácie → bude true
+            XCTAssertEqual(error, .network(URLError(.timedOut)))
+        } catch {
+            return XCTFail("Unexpected error: \(error)")
+        }
 
         guard case .revealed(let code) = store.state else {
             return XCTFail("Expected still .revealed")
         }
         XCTAssertEqual(code, "ERR")
         XCTAssertTrue(store.showActivationError)
-    }}
+    }
+}
