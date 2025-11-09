@@ -83,7 +83,6 @@ final class assignment_appTests: XCTestCase {
             try await store.activate()
             return XCTFail("Expected network error, but no error was thrown")
         } catch let error as ActivationError {
-            // rovnosť .network(_) porovnávame podľa tvojej Equatable implementácie → bude true
             XCTAssertEqual(error, .network(URLError(.timedOut)))
         } catch {
             return XCTFail("Unexpected error: \(error)")
